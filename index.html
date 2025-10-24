@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Audio History Story Quiz</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fc;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .tts-button {
+            transition: all 0.15s ease-in-out;
+        }
+        .tts-button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        .tts-button:active:not(:disabled) {
+            transform: translateY(0);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        .tts-button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+        #message-box {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+            background: #fff;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+            text-align: center;
+            display: none; 
+            min-width: 300px;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-center items-center">
+
+    <!-- Custom Message Box (for alerts, though audio system now handles all messages) -->
+    <div id="message-box" class="hidden">
+        <div id="message-content" class="text-lg font-semibold text-gray-800"></div>
+        <button onclick="document.getElementById('message-box').style.display='none';" class="mt-4 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">OK</button>
+    </div>
+
+    <!-- Hidden Audio Element to Play M4A Files -->
+    <audio id="quiz-audio" preload="auto"></audio>
+
+    <div class="container bg-white p-6 md:p-10 shadow-xl rounded-2xl w-full">
+        <h1 class="text-4xl font-bold text-center text-indigo-700 mb-6">History of Sports Audio Story Quiz</h1>
+        <p class="text-center text-gray-600 mb-8">Listen to the short story first, and then answer the questions by clicking the correct button (A, B, or C).</p>
+
+        <!-- Current Story/Question Display & Status -->
+        <div class="bg-indigo-50 p-6 rounded-xl shadow-inner mb-8">
+            <div id="status-text" class="text-lg font-semibold text-indigo-800 mb-4">
+                Loading quiz...
+            </div>
+            <div id="question-text" class="text-2xl font-bold text-gray-900 min-h-[50px]">
+                <!-- Question Text will be inserted here -->
+            </div>
+            <div id="options-text" class="mt-4 space-y-2 text-xl">
+                <!-- Options will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Action Buttons (A, B, C) -->
+        <div id="answer-buttons" class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <button id="btn-a" data-answer="A" onclick="checkAnswer('A')" class="tts-button bg-green-500 text-white p-6 rounded-xl text-3xl font-extrabold shadow-lg hover:bg-green-600 disabled:bg-gray-400">
+                A
+            </button>
+            <button id="btn-b" data-answer="B" onclick="checkAnswer('B')" class="tts-button bg-yellow-500 text-white p-6 rounded-xl text-3xl font-extrabold shadow-lg hover:bg-yellow-600 disabled:bg-gray-400">
+                B
+            </button>
+            <button id="btn-c" data-answer="C" onclick="checkAnswer('C')" class="tts-button bg-red-500 text-white p-6 rounded-xl text-3xl font-extrabold shadow-lg hover:bg-red-600 disabled:bg-gray-400">
+                C
+            </button>
+        </div>
+
+        <!-- Controls/Restart -->
+        <div class="text-center mt-8">
+             <button id="restart-button" onclick="startQuiz()" class="tts-button bg-blue-500 text-white px-8 py-3 rounded-xl text-lg font-semibold shadow-md hover:bg-blue-600 hidden">
+                Restart Quiz
+            </button>
+            <button id="start-story-button" onclick="startStorySequence()" class="tts-button bg-blue-600 text-white px-8 py-3 rounded-xl text-lg font-semibold shadow-md hover:bg-blue-700">
+                Start the Quiz
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // --- State and DOM Elements ---
+        let currentStoryIndex = 0;
+        let currentQuestionIndexInStory = 0;
+        let totalQuestionsAnswered = 0;
+        let totalScore = 0;
+
+        const quizAudio = document.getElementById('quiz-audio');
+        const statusText = document.getElementById('status-text');
+        const questionTextElement = document.getElementById('question-text');
+        const optionsTextElement = document.getElementById('options-text');
+        const answerButtons = document.getElementById('answer-buttons').querySelectorAll('button');
+        const restartButton = document.getElementById('restart-button');
+        const startStoryButton = document.getElementById('start-story-button');
+        
+        const totalQuizQuestions = 6; 
+
+        // --- Utility Function ---
+        const showCustomMessage = (message) => {
+            const messageBox = document.getElementById('message-box');
+            document.getElementById('message-content').innerText = message;
+            messageBox.style.display = 'block';
+        };
+
+
+        // *** IMPORTANT: The audio file paths assume all MP3 files are in a folder named 'audio' ***
+        // *** All files MUST be ALL LOWERCASE! ***
+        const AUDIO_PATH = 'audio/'; 
+
+        // Define the paths to your recorded MP3 files
+        const quizData = [
+            {
+                title: "The Legend of the Marathon",
+                story_file: AUDIO_PATH + "story_1_audio.mp3", 
+                questions: [
+                    {
+                        text: "Question one: What was the main reason the Greek messenger ran to Athens?",
+                        options: { A: "To bring news of a victory.", B: "To start a sports festival.", C: "To find water for the army." },
+                        answer: "A",
+                        question_file: AUDIO_PATH + "question_1_1.mp3", // Combined Q + Options
+                        feedback_correct_file: AUDIO_PATH + "feedback_1_1_correct.mp3", 
+                        feedback_incorrect_file: AUDIO_PATH + "feedback_1_1_incorrect.mp3", 
+                    },
+                    {
+                        text: "Question two: About how long was the run that inspired the modern Marathon race?",
+                        options: { A: "Five miles.", B: "About twenty-six miles.", C: "One hundred miles." },
+                        answer: "B",
+                        question_file: AUDIO_PATH + "question_1_2.mp3", // Combined Q + Options
+                        feedback_correct_file: AUDIO_PATH + "feedback_1_2_correct.mp3", 
+                        feedback_incorrect_file: AUDIO_PATH + "feedback_1_2_incorrect.mp3", 
+                    }
+                ]
+            },
+            {
+                title: "The Ancient Aztec Ballgame",
+                story_file: AUDIO_PATH + "story_2_audio.mp3", 
+                questions: [
+                    {
+                        text: "Question three: Which body parts were the players mainly allowed to use to hit the ball?",
+                        options: { A: "Their hands and feet.", B: "Their hips, knees, and elbows.", C: "A wooden paddle." },
+                        answer: "B",
+                        question_file: AUDIO_PATH + "question_2_1.mp3", // Combined Q + Options
+                        feedback_correct_file: AUDIO_PATH + "feedback_2_1_correct.mp3", 
+                        feedback_incorrect_file: AUDIO_PATH + "feedback_2_1_incorrect.mp3", 
+                    },
+                    {
+                        text: "Question four: What made the Aztec game of Ullamaliztli so serious?",
+                        options: { A: "It was only played by kings.", B: "It was a religious ceremony, sometimes with serious consequences.", C: "The ball was made of iron." },
+                        answer: "B",
+                        question_file: AUDIO_PATH + "question_2_2.mp3", // Combined Q + Options
+                        feedback_correct_file: AUDIO_PATH + "feedback_2_2_correct.mp3", 
+                        feedback_incorrect_file: AUDIO_PATH + "feedback_2_2_incorrect.mp3", 
+                    }
+                ]
+            },
+            {
+                title: "Baseball's Unclear Beginning",
+                story_file: AUDIO_PATH + "story_3_audio.mp3", 
+                questions: [
+                    {
+                        text: "Question five: In what New York town is the famous Baseball Hall of Fame located?",
+                        options: { A: "New York City.", B: "Cooperstown.", C: "Buffalo." },
+                        answer: "B",
+                        question_file: AUDIO_PATH + "question_3_1.mp3", // Combined Q + Options
+                        feedback_correct_file: AUDIO_PATH + "feedback_3_1_correct.mp3", 
+                        feedback_incorrect_file: AUDIO_PATH + "feedback_3_1_incorrect.mp3", 
+                    },
+                    {
+                        text: "Question six: What is the main reason historians doubt that Abner Doubleday invented baseball?",
+                        options: { A: "He hated sports.", B: "He only invented soccer.", C: "There is no actual proof he wrote the rules down." },
+                        answer: "C",
+                        question_file: AUDIO_PATH + "question_3_2.mp3", // Combined Q + Options
+                        feedback_correct_file: AUDIO_PATH + "feedback_3_2_correct.mp3", 
+                        feedback_incorrect_file: AUDIO_PATH + "feedback_3_2_incorrect.mp3", 
+                    }
+                ]
+            }
+        ];
+
+        // --- Audio Playback Function (using MP3 files) ---
+        const playAudio = (fileUrl) => {
+            return new Promise((resolve) => {
+                disableButtons(true);
+                quizAudio.src = fileUrl;
+                
+                quizAudio.onended = () => {
+                    disableButtons(false);
+                    resolve(true);
+                };
+
+                quizAudio.onerror = (e) => {
+                    console.error("Audio playback error. File not found:", fileUrl, e);
+                    // Show message box if the file is missing/broken
+                    showCustomMessage(`Error: Could not play audio file. The code is looking for '${fileUrl}'. Please check your GitHub 'audio' folder for exact spelling and capitalization.`);
+                    disableButtons(false);
+                    resolve(false); 
+                };
+
+                // The .play() call satisfies the browser's autoplay policy immediately after a user click
+                quizAudio.play().catch(e => {
+                    console.warn("Autoplay was prevented (shouldn't happen after user click).", e);
+                    disableButtons(false);
+                    resolve(false);
+                });
+            });
+        };
+
+        // --- UI Control Functions ---
+        const updateUI = (isStoryPhase = false) => {
+            restartButton.classList.add('hidden');
+            startStoryButton.classList.add('hidden'); 
+
+            if (currentStoryIndex >= quizData.length) return; 
+
+            const story = quizData[currentStoryIndex];
+            
+            if (isStoryPhase) {
+                statusText.innerText = `Ready for Story ${currentStoryIndex + 1} of 3: ${story.title}`;
+                questionTextElement.innerText = "Please wait, the story audio is playing. Listen carefully!";
+                optionsTextElement.innerHTML = ``;
+            } else {
+                const q = story.questions[currentQuestionIndexInStory];
+                const currentQuestionNumber = totalQuestionsAnswered + 1;
+
+                statusText.innerText = `Question ${currentQuestionNumber} of ${totalQuizQuestions} (About: ${story.title})`;
+                questionTextElement.innerText = q.text;
+                optionsTextElement.innerHTML = `
+                    <p>A: ${q.options.A}</p>
+                    <p>B: ${q.options.B}</p>
+                    <p>C: ${q.options.C}</p>
+                `;
+            }
+        };
+
+        const disableButtons = (disable) => {
+            answerButtons.forEach(button => button.disabled = disable);
+        };
+
+        // --- Quiz Flow Functions ---
+        
+        window.readQuestion = async () => {
+            updateUI();
+            const story = quizData[currentStoryIndex];
+            const q = story.questions[currentQuestionIndexInStory];
+            await playAudio(q.question_file);
+        };
+
+        window.checkAnswer = async (selectedAnswer) => {
+            disableButtons(true);
+
+            const story = quizData[currentStoryIndex];
+            const q = story.questions[currentQuestionIndexInStory];
+            
+            const isCorrect = selectedAnswer === q.answer;
+            totalQuestionsAnswered++;
+            
+            const buttonElement = document.getElementById(`btn-${selectedAnswer.toLowerCase()}`);
+            
+            // Visual feedback
+            buttonElement.classList.add('ring-4'); 
+            
+            if (isCorrect) {
+                buttonElement.classList.add('ring-green-400');
+                await playAudio(q.feedback_correct_file);
+                totalScore++;
+            } else {
+                buttonElement.classList.add('ring-red-400');
+                await playAudio(q.feedback_incorrect_file);
+            }
+            
+            // Clean up visual feedback after feedback audio is done
+            buttonElement.classList.remove('ring-4', 'ring-green-400', 'ring-red-400');
+
+            currentQuestionIndexInStory++;
+            await proceedToNextItem();
+        };
+
+        const proceedToNextItem = async () => {
+            const story = quizData[currentStoryIndex];
+
+            if (currentQuestionIndexInStory < story.questions.length) {
+                // More questions in the current story
+                await readQuestion();
+            } else if (currentStoryIndex < quizData.length - 1) {
+                // Move to the next story
+                currentStoryIndex++;
+                currentQuestionIndexInStory = 0;
+                
+                // Transition UI to prompt for next story start
+                questionTextElement.innerText = `You finished the questions for Story ${currentStoryIndex} of 3. Click the button below to start Story ${currentStoryIndex + 1}.`;
+                startStoryButton.innerText = `Listen to the next Story`;
+                startStoryButton.onclick = readStoryAndQuestions; // Set correct function for next click
+                startStoryButton.classList.remove('hidden');
+                disableButtons(false);
+                
+            } else {
+                // End of quiz
+                endQuiz();
+            }
+        };
+
+        window.readStoryAndQuestions = async () => {
+            disableButtons(true);
+            startStoryButton.classList.add('hidden'); // Hide the start button while playing
+            const story = quizData[currentStoryIndex];
+            updateUI(true); // Set UI to story phase
+
+            // 1. Play the Story
+            await playAudio(story.story_file);
+            
+            // 2. Read the first question of the story
+            await readQuestion();
+        };
+
+        const endQuiz = async () => {
+            disableButtons(true);
+            questionTextElement.innerText = "Quiz Complete!";
+            optionsTextElement.innerText = "";
+            statusText.innerText = `Final Score: ${totalScore} out of ${totalQuizQuestions}.`;
+            restartButton.classList.remove('hidden');
+
+            let finalScoreFile;
+            if (totalScore === totalQuizQuestions) {
+                finalScoreFile = AUDIO_PATH + "final_score_perfect.mp3";
+            } else if (totalScore >= totalQuizQuestions / 2) {
+                finalScoreFile = AUDIO_PATH + "final_score_good.mp3";
+            } else {
+                finalScoreFile = AUDIO_PATH + "final_score_low.mp3";
+            }
+
+            await playAudio(finalScoreFile);
+            disableButtons(false); 
+        };
+        
+        // --- Initialization ---
+        window.startStorySequence = async () => {
+            startStoryButton.classList.add('hidden');
+            disableButtons(true);
+
+            const introFile = AUDIO_PATH + "start_intro.mp3";
+
+            // 1. Play the welcome message
+            questionTextElement.innerText = "Welcome to the Audio Story Quiz! Listen for the instructions.";
+            statusText.innerText = "Instructions";
+            await playAudio(introFile);
+
+            // 2. Set up for the first story start
+            questionTextElement.innerText = "Click the 'Listen to the First Story' button below when you are ready to begin.";
+            startStoryButton.innerText = "Listen to the First Story";
+            startStoryButton.onclick = readStoryAndQuestions; // The next click starts the story flow
+            startStoryButton.classList.remove('hidden');
+            disableButtons(false);
+        }
+
+        window.startQuiz = () => {
+            currentStoryIndex = 0;
+            currentQuestionIndexInStory = 0;
+            totalQuestionsAnswered = 0;
+            totalScore = 0;
+
+            questionTextElement.innerText = "Ready to start the quiz!";
+            optionsTextElement.innerText = "Click the blue button below to begin.";
+            statusText.innerText = "Ready to Start";
+            
+            startStoryButton.innerText = "Start the Quiz";
+            startStoryButton.onclick = startStorySequence; // Initial click runs instructions
+            startStoryButton.classList.remove('hidden');
+            restartButton.classList.add('hidden');
+            disableButtons(false); 
+        };
+
+        window.onload = window.startQuiz;
+
+    </script>
+</body>
+</html>
